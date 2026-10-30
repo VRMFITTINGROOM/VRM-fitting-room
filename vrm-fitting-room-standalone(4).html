@@ -1,0 +1,819 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><title>VRM Fitting Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=Syne:wght@700;800&display=swap">
+<style>
+/* Layout: a sticky 3D fitting stage beside a column of tape-measure sliders; stacks on phones with the stage pinned on top. */
+:root {
+  --bg: #E9EBF4;
+  --panel: #F7F8FC;
+  --ink: #1A2040;
+  --muted: #586084;
+  --line: #CBD0E3;
+  --track: #DADEEE;
+  --tick: #8D95BA;
+  --accent: #F2BE1A;
+  --on-accent: #1A2040;
+  --fill: rgba(242, 190, 26, 0.55);
+  --stage-top: #FAFBFF;
+  --stage-bot: #D6DBEE;
+  --grid1: #8F98C2;
+  --grid2: #C4C9E2;
+  --focus: #3552E0;
+  --warn: #8A5A00;
+  --display: 'Syne', system-ui, sans-serif;
+  --body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11152A; --panel: #191E38; --ink: #E8EAF7; --muted: #9BA3CB; --line: #2C3459;
+    --track: #252C52; --tick: #5E6AA0; --fill: rgba(242, 190, 26, 0.42);
+    --stage-top: #222950; --stage-bot: #0D1124; --grid1: #4F5B92; --grid2: #2B3358;
+    --focus: #8FA2FF; --warn: #F2BE1A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11152A; --panel: #191E38; --ink: #E8EAF7; --muted: #9BA3CB; --line: #2C3459;
+  --track: #252C52; --tick: #5E6AA0; --fill: rgba(242, 190, 26, 0.42);
+  --stage-top: #222950; --stage-bot: #0D1124; --grid1: #4F5B92; --grid2: #2B3358;
+  --focus: #8FA2FF; --warn: #F2BE1A; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45;
+  padding-block: 14px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px 20px; align-items: start; max-width: 1280px; margin-inline: auto; }
+header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+.brand { min-width: 0; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 21px; letter-spacing: -0.01em; margin: 0; line-height: 1.1; }
+#status { margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font: 500 14px var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 9px 14px; cursor: pointer; }
+.btn:hover { border-color: var(--tick); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.stage { position: sticky; top: 14px; height: min(80vh, 780px); min-width: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: linear-gradient(var(--stage-top), var(--stage-bot)); }
+.stage canvas { display: block; width: 100%; height: 100%; }
+.stage.drag { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.hint { position: absolute; left: 16px; bottom: 12px; right: 16px; font: 400 12px var(--mono); color: var(--muted); pointer-events: none; }
+.nogl { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
+.panel { display: flex; flex-direction: column; gap: 18px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+.grp { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#controls { display: flex; flex-direction: column; gap: 20px; }
+.grp h2 { font: 700 11px var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 2px; }
+.row { display: flex; flex-direction: column; gap: 2px; }
+.row.na { opacity: 0.4; }
+.rowhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.rowhead label { font-size: 14px; cursor: default; }
+.rowhead output { font: 400 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.rowhead output.changed { color: var(--ink); }
+.tape { position: relative; height: 22px; }
+.tape::before { content: ""; position: absolute; left: 8px; right: 8px; top: 9px; height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, transparent var(--a, 0%), var(--accent) var(--a, 0%), var(--accent) var(--b, 0%), transparent var(--b, 0%)), var(--track); }
+.tape::after { content: ""; position: absolute; top: 5px; bottom: 5px; width: 2px; margin-left: -1px; left: calc(8px + (100% - 16px) * var(--c, 50) / 100); background: var(--muted); border-radius: 1px; opacity: 0.7; }
+.tape input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; z-index: 1; appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer; }
+.tape input:disabled { cursor: not-allowed; }
+.tape input::-webkit-slider-runnable-track { height: 22px; background: transparent; }
+.tape input::-moz-range-track { height: 22px; background: transparent; }
+.tape input::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: 3px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--tick), 0 1px 3px rgba(0, 0, 0, 0.3); box-sizing: border-box; }
+.tape input::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--tick), 0 1px 3px rgba(0, 0, 0, 0.3); box-sizing: border-box; }
+.tape input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tape input:focus-visible::-moz-range-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tip { margin: 0; font-size: 12px; color: var(--muted); }
+.warn { margin: 0; font-size: 13px; color: var(--warn); }
+details { font-size: 13px; color: var(--muted); }
+summary { cursor: pointer; font-weight: 500; color: var(--ink); }
+details p { margin: 8px 0 0; max-width: 62ch; }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .stage { top: env(safe-area-inset-top, 0px); height: 42vh; min-height: 260px; z-index: 5; }
+}
+@media (prefers-reduced-motion: no-preference) { .btn { transition: border-color 0.15s; } }
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand">
+      <h1>VRM Fitting Room</h1>
+      <p id="status" role="status">Demo mannequin loaded. Open your .vrm file to start fitting it.</p>
+    </div>
+    <div class="actions">
+      <button class="btn" id="open" type="button">Open .vrm</button>
+      <button class="btn" id="reset" type="button">Reset all</button>
+      <button class="btn primary" id="export" type="button" disabled title="Open a .vrm file first">Export VRM</button>
+    </div>
+    <input type="file" id="file" accept=".vrm,.glb,model/gltf-binary" hidden>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="hint" id="hint">Demo mannequin. Drop a .vrm file here, or use Open .vrm.</div>
+  </div>
+
+  <div class="panel" id="panel">
+    <p class="warn" id="license" hidden></p>
+    <div id="controls"></div>
+    <p class="tip" id="exporthint"></p>
+    <details>
+      <summary>Tips and how it works</summary>
+      <p>100% is the original size. Double-click a slider label to reset it. Drag on the preview to orbit and scroll to zoom.</p>
+      <p>Belly, chest, hips, thighs, calves and arm thickness reshape the body surface in a smooth band around that body part, so the rest of the character does not stretch. Height, leg length, arm length and head size rescale bones. Textures, materials, blendshapes and the skeleton layout are kept.</p>
+      <p>Hair, skirt and other spring-bone physics keep their original settings. After large changes, check them in your VRM viewer. Values within about 40% of the original give the cleanest result.</p>
+    </details>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function () {
+  'use strict';
+  var V3 = THREE.Vector3, M4 = THREE.Matrix4, Q = THREE.Quaternion;
+
+  /* ---------- Controls ---------- */
+  var CONTROLS = [
+    { id: 'height', group: 'Overall', label: 'Height', min: 70, max: 140, kind: 'height' },
+    { id: 'belly', group: 'Torso', label: 'Belly length', min: 50, max: 220, kind: 'torso', names: ['spine'], w: { x: 0.2, z: 1 }, set: ['hips', 'spine', 'chest', 'upperChest'], front: 1, back: 0.3 },
+    { id: 'bellyRound', group: 'Torso', label: 'Belly roundness', min: 50, max: 220, kind: 'torso', names: ['spine'], w: { x: 1, z: 0.55 }, set: ['hips', 'spine', 'chest', 'upperChest'], front: 1, back: 0.25 },
+    { id: 'chest', group: 'Torso', label: 'Chest', min: 60, max: 180, kind: 'torso', names: ['chest', 'upperChest'], w: { x: 0.9, z: 1 }, set: ['spine', 'chest', 'upperChest'], front: 1, back: 0.4 },
+    { id: 'hips', group: 'Torso', label: 'Hips', min: 60, max: 200, kind: 'torso', names: ['hips'], w: { x: 1, z: 0.8 }, set: ['hips', 'leftUpperLeg', 'rightUpperLeg'], front: 0.3, back: 1 },
+    { id: 'thighs', group: 'Legs', label: 'Thighs', min: 50, max: 220, kind: 'thick', bone: 'UpperLeg' },
+    { id: 'calves', group: 'Legs', label: 'Calves', min: 50, max: 200, kind: 'thick', bone: 'LowerLeg' },
+    { id: 'legLen', group: 'Legs', label: 'Leg length', min: 70, max: 140, kind: 'length', bone: 'UpperLeg' },
+    { id: 'upperArms', group: 'Arms', label: 'Upper arms', min: 50, max: 200, kind: 'thick', bone: 'UpperArm' },
+    { id: 'forearms', group: 'Arms', label: 'Forearms', min: 50, max: 200, kind: 'thick', bone: 'LowerArm' },
+    { id: 'armLen', group: 'Arms', label: 'Arm length', min: 70, max: 140, kind: 'length', bone: 'UpperArm' },
+    { id: 'head', group: 'Head', label: 'Head size', min: 60, max: 160, kind: 'head', names: ['head'] }
+  ];
+  var LIMB_CHILD = { UpperLeg: 'LowerLeg', LowerLeg: 'Foot', UpperArm: 'LowerArm', LowerArm: 'Hand' };
+  var SIDES = ['left', 'right'];
+  function boneNames(c) {
+    if (c.names) return c.names;
+    return SIDES.map(function (s) { return s + c.bone; });
+  }
+
+  /* ---------- GLB / VRM file handling ---------- */
+  function parseGLB(buf) {
+    var dv = new DataView(buf);
+    if (buf.byteLength < 20 || dv.getUint32(0, true) !== 0x46546C67) throw new Error('This is not a .vrm (GLB) file.');
+    if (dv.getUint32(4, true) !== 2) throw new Error('Only glTF 2.0 based VRM files are supported.');
+    var off = 12, json = null, chunks = [];
+    while (off + 8 <= buf.byteLength) {
+      var len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+      var data = new Uint8Array(buf, off + 8, len);
+      if (type === 0x4E4F534A && !json) json = JSON.parse(new TextDecoder().decode(data));
+      else chunks.push({ type: type, data: data });
+      off += 8 + len;
+    }
+    if (!json) throw new Error('The file has no model data.');
+    return { json: json, chunks: chunks };
+  }
+  function buildGLB(json, chunks) {
+    var jb = new TextEncoder().encode(JSON.stringify(json));
+    var jl = (jb.length + 3) & ~3, total = 12 + 8 + jl, i;
+    for (i = 0; i < chunks.length; i++) total += 8 + ((chunks[i].data.length + 3) & ~3);
+    var out = new Uint8Array(total), dv = new DataView(out.buffer);
+    dv.setUint32(0, 0x46546C67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+    var o = 12;
+    dv.setUint32(o, jl, true); dv.setUint32(o + 4, 0x4E4F534A, true);
+    out.fill(0x20, o + 8, o + 8 + jl); out.set(jb, o + 8); o += 8 + jl;
+    for (i = 0; i < chunks.length; i++) {
+      var c = chunks[i], l = (c.data.length + 3) & ~3;
+      dv.setUint32(o, l, true); dv.setUint32(o + 4, c.type, true);
+      out.set(c.data, o + 8); o += 8 + l;
+    }
+    return out;
+  }
+  function humanoidMap(json) {
+    var ex = json.extensions || {}, m = {}, k;
+    if (ex.VRMC_vrm && ex.VRMC_vrm.humanoid && ex.VRMC_vrm.humanoid.humanBones) {
+      var hb = ex.VRMC_vrm.humanoid.humanBones;
+      for (k in hb) if (hb[k] && Number.isInteger(hb[k].node)) m[k] = hb[k].node;
+    } else if (ex.VRM && ex.VRM.humanoid && Array.isArray(ex.VRM.humanoid.humanBones)) {
+      ex.VRM.humanoid.humanBones.forEach(function (b) { if (b && Number.isInteger(b.node)) m[b.bone] = b.node; });
+    }
+    return m;
+  }
+
+  /* ---------- Zip (store only), used where the viewer cannot save .vrm directly ---------- */
+  var CRC = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  function crc32(u8) { var c = 0xFFFFFFFF; for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  function zipStore(name, data) {
+    var nb = new TextEncoder().encode(name), crc = crc32(data), size = data.length;
+    var lh = 30 + nb.length, cd = 46 + nb.length, out = new Uint8Array(lh + size + cd + 22), dv = new DataView(out.buffer);
+    var TIME = 0, DATE = ((2026 - 1980) << 9) | (10 << 5) | 30;
+    dv.setUint32(0, 0x04034b50, true); dv.setUint16(4, 20, true); dv.setUint16(6, 0x0800, true); dv.setUint16(8, 0, true);
+    dv.setUint16(10, TIME, true); dv.setUint16(12, DATE, true); dv.setUint32(14, crc, true);
+    dv.setUint32(18, size, true); dv.setUint32(22, size, true); dv.setUint16(26, nb.length, true); dv.setUint16(28, 0, true);
+    out.set(nb, 30); out.set(data, lh);
+    var c = lh + size;
+    dv.setUint32(c, 0x02014b50, true); dv.setUint16(c + 4, 20, true); dv.setUint16(c + 6, 20, true); dv.setUint16(c + 8, 0x0800, true);
+    dv.setUint16(c + 10, 0, true); dv.setUint16(c + 12, TIME, true); dv.setUint16(c + 14, DATE, true); dv.setUint32(c + 16, crc, true);
+    dv.setUint32(c + 20, size, true); dv.setUint32(c + 24, size, true); dv.setUint16(c + 28, nb.length, true);
+    dv.setUint32(c + 42, 0, true); out.set(nb, c + 46);
+    var e = c + cd;
+    dv.setUint32(e, 0x06054b50, true); dv.setUint16(e + 8, 1, true); dv.setUint16(e + 10, 1, true);
+    dv.setUint32(e + 12, cd, true); dv.setUint32(e + 16, lh + size, true);
+    return out;
+  }
+
+  /* ---------- Skeleton math ---------- */
+  function prepare(json) {
+    var n = json.nodes.length, i;
+    var m = { json: json, n: n, parent: new Array(n).fill(-1), L0: [], W0: new Array(n), hum: humanoidMap(json) };
+    json.nodes.forEach(function (nd, idx) { (nd.children || []).forEach(function (c) { m.parent[c] = idx; }); });
+    for (i = 0; i < n; i++) {
+      var nd = json.nodes[i];
+      m.L0[i] = nd.matrix ? new M4().fromArray(nd.matrix)
+        : new M4().compose(new V3().fromArray(nd.translation || [0, 0, 0]), new Q().fromArray(nd.rotation || [0, 0, 0, 1]), new V3().fromArray(nd.scale || [1, 1, 1]));
+    }
+    function world(i) {
+      if (m.W0[i]) return m.W0[i];
+      m.W0[i] = m.parent[i] < 0 ? m.L0[i].clone() : new M4().multiplyMatrices(world(m.parent[i]), m.L0[i]);
+      return m.W0[i];
+    }
+    for (i = 0; i < n; i++) world(i);
+    return m;
+  }
+  function argmaxAbs(a) { var k = 0; for (var i = 1; i < a.length; i++) if (Math.abs(a[i]) > Math.abs(a[k])) k = i; return k; }
+  function lenAxis(m, idx, childName) {
+    var c = m.hum[childName];
+    if (c === undefined) return 1;
+    var t = new V3().setFromMatrixPosition(m.L0[c]);
+    return argmaxAbs([t.x, t.y, t.z]);
+  }
+  function worldToLocalAxis(m, idx, wa) {
+    var e = m.W0[idx].elements;
+    return argmaxAbs([e[0 * 4 + wa], e[1 * 4 + wa], e[2 * 4 + wa]]);
+  }
+  function bump(map, idx, axis, k) {
+    var v = map[idx] || (map[idx] = new V3(1, 1, 1));
+    v.setComponent(axis, v.getComponent(axis) * k);
+  }
+
+  /* Returns [{i, p, q, s}] new local transforms for hips and everything beneath it. f maps control id to a factor (1 = original). */
+  function computeEdits(m, f) {
+    var thick = {}, carry = {}, H = 1, legF = 1, hum = m.hum;
+    CONTROLS.forEach(function (c) {
+      var v = f[c.id];
+      if (v === undefined || Math.abs(v - 1) < 1e-6) return;
+      if (c.kind === 'height') { H = v; return; }
+      if ((c.kind === 'torso' || c.kind === 'thick') && !m.boneThick) return;
+      boneNames(c).forEach(function (name) {
+        var idx = hum[name];
+        if (idx === undefined) return;
+        if (c.kind === 'head') { for (var a = 0; a < 3; a++) bump(carry, idx, a, v); return; }
+        if (c.kind === 'torso') {
+          ['x', 'z'].forEach(function (ax, k) {
+            var w = c.w[ax]; if (!w) return;
+            bump(thick, idx, worldToLocalAxis(m, idx, k === 0 ? 0 : 2), 1 + (v - 1) * w);
+          });
+          return;
+        }
+        var side = name.slice(0, name.indexOf(c.bone));
+        var len = lenAxis(m, idx, side + LIMB_CHILD[c.bone]);
+        if (c.kind === 'thick') { for (var b = 0; b < 3; b++) if (b !== len) bump(thick, idx, b, v); }
+        else if (c.kind === 'length') { bump(carry, idx, len, v); if (c.id === 'legLen') legF = v; }
+      });
+    });
+    var hips = hum.hips, out = [];
+    function avgY(names) {
+      var a = names.filter(function (k) { return hum[k] !== undefined; })
+        .map(function (k) { return new V3().setFromMatrixPosition(m.W0[hum[k]]).y; });
+      return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null;
+    }
+    /* Lengthening the legs pushes the ankles down; raise the hips by the same amount so the feet stay on the floor. */
+    var legY = avgY(['leftUpperLeg', 'rightUpperLeg']), footY = avgY(['leftFoot', 'rightFoot']);
+    var lift = legY === null ? 0 : (legY - (footY === null ? 0 : footY)) * (legF - 1);
+    /* Hands and feet keep their own shape when the arm or leg around them is made longer. */
+    var keep = {}, acc = {};
+    ['leftHand', 'rightHand', 'leftFoot', 'rightFoot'].forEach(function (k) { if (hum[k] !== undefined) keep[hum[k]] = true; });
+    function colScale(sv, q) {
+      var e = new M4().makeRotationFromQuaternion(q).elements, r = [];
+      for (var j = 0; j < 3; j++) r.push(Math.hypot(sv.x * e[j * 4], sv.y * e[j * 4 + 1], sv.z * e[j * 4 + 2]) || 1);
+      return new V3(r[0], r[1], r[2]);
+    }
+    var kids = {};
+    m.json.nodes.forEach(function (nd, i) { kids[i] = nd.children || []; });
+    var queue = [hips];
+    var wpar = m.parent[hips] >= 0 ? m.W0[m.parent[hips]] : new M4();
+    var wparInv = new M4().copy(wpar).invert();
+    while (queue.length) {
+      var n = queue.shift(), par = m.parent[n];
+      var p = new V3(), q = new Q(), s = new V3();
+      m.L0[n].decompose(p, q, s);
+      if (n !== hips) {
+        /* Keep the child exactly where it was and cancel the parent's thickening on its own shape, without skewing it. */
+        var t = thick[par];
+        if (t) { s.divide(colScale(t, q)); p.set(p.x / t.x, p.y / t.y, p.z / t.z); }
+        if (keep[n] && acc[par]) s.divide(colScale(acc[par], q));
+      } else {
+        var wp = new V3().setFromMatrixPosition(m.W0[n]);
+        wp.y = (wp.y + lift) * H;
+        p = wp.applyMatrix4(wparInv);
+        s.multiplyScalar(H);
+      }
+      var own = carry[n], a = acc[par] ? acc[par].clone() : new V3(1, 1, 1);
+      if (own) a.multiply(own);
+      acc[n] = keep[n] ? new V3(1, 1, 1) : a;
+      if (thick[n]) s.multiply(thick[n]);
+      if (own) s.multiply(own);
+      out.push({ i: n, p: p, q: q, s: s });
+      kids[n].forEach(function (c) { queue.push(c); });
+    }
+    return out;
+  }
+  function differs(m, e) {
+    var p = new V3(), q = new Q(), s = new V3();
+    m.L0[e.i].decompose(p, q, s);
+    var d = Math.abs(p.x - e.p.x) + Math.abs(p.y - e.p.y) + Math.abs(p.z - e.p.z)
+      + Math.abs(s.x - e.s.x) + Math.abs(s.y - e.s.y) + Math.abs(s.z - e.s.z)
+      + (1 - Math.abs(q.x * e.q.x + q.y * e.q.y + q.z * e.q.z + q.w * e.q.w));
+    return d > 1e-6;
+  }
+  function editedJSON(m, edits) {
+    var j = JSON.parse(JSON.stringify(m.json));
+    edits.forEach(function (e) {
+      if (!differs(m, e)) return;
+      var nd = j.nodes[e.i];
+      delete nd.matrix;
+      nd.translation = [e.p.x, e.p.y, e.p.z];
+      nd.rotation = [e.q.x, e.q.y, e.q.z, e.q.w];
+      nd.scale = [e.s.x, e.s.y, e.s.z];
+    });
+    return j;
+  }
+
+
+  /* ---------- Surface shaping: belly, chest, hips, thighs, calves, arms ----------
+     These move the mesh itself, in a smooth band around the body part, so nothing else stretches.
+     Each vertex gets a displacement that is proportional to (slider - 100%). */
+  var BIN_TYPE = 0x004E4942;
+  function buildDeformers(m, chunks) {
+    var bin = null, json = m.json, hum = m.hum;
+    chunks.forEach(function (c) { if (c.type === BIN_TYPE && !bin) bin = c.data; });
+    if (!bin) return null;
+    var dv = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
+    var fz = json.extensions && json.extensions.VRM && !json.extensions.VRMC_vrm ? -1 : 1;
+    var boneOf = {}, P = {};
+    Object.keys(hum).forEach(function (k) {
+      boneOf[hum[k]] = k;
+      var e = m.W0[hum[k]].elements; P[k] = { x: e[12], y: e[13], z: e[14] };
+    });
+    function acc(ai) {
+      var a = json.accessors[ai];
+      if (!a || a.bufferView === undefined || a.sparse) return null;
+      var bv = json.bufferViews[a.bufferView];
+      if (bv.buffer !== 0) return null;
+      var n = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[a.type];
+      var cs = { 5126: 4, 5125: 4, 5123: 2, 5122: 2, 5121: 1, 5120: 1 }[a.componentType];
+      return { a: a, ai: ai, count: a.count, n: n, ct: a.componentType, cs: cs, stride: bv.byteStride || n * cs, base: (bv.byteOffset || 0) + (a.byteOffset || 0) };
+    }
+    function rd(A, i, k) {
+      var o = A.base + i * A.stride + k * A.cs;
+      switch (A.ct) {
+        case 5126: return dv.getFloat32(o, true);
+        case 5123: return dv.getUint16(o, true);
+        case 5121: return dv.getUint8(o);
+        default: return dv.getUint32(o, true);
+      }
+    }
+    var surf = CONTROLS.filter(function (c) { return c.kind === 'torso' || c.kind === 'thick'; });
+    var hy = P.hips ? P.hips.y : 0;
+    var chestY = (P.chest || P.upperChest || P.spine || P.hips).y, neckY = (P.neck || P.head || P.hips).y;
+    var axis = P.spine || P.hips;
+    function bump(y, c, h) { var u = (y - c) / h; return u <= -1 || u >= 1 ? 0 : 0.5 * (1 + Math.cos(Math.PI * u)); }
+    function profile(id, y) {
+      if (id === 'belly') return bump(y, hy + (chestY - hy) * 0.42, Math.max(0.05, (chestY - hy) * 0.65));
+      if (id === 'bellyRound') return bump(y, hy + (chestY - hy) * 0.38, Math.max(0.04, (chestY - hy) * 0.4));
+      if (id === 'chest') return bump(y, chestY + (neckY - chestY) * 0.35, Math.max(0.05, (neckY - chestY) * 0.75));
+      return bump(y, hy - 0.02, Math.max(0.12, hy * 0.2));
+    }
+    /* Belly roundness: a round dome on the front of the belly, narrow and circular, instead of a wide band. */
+    var halfW = P.leftUpperLeg && P.rightUpperLeg ? Math.abs(P.leftUpperLeg.x - P.rightUpperLeg.x) * 0.85 : 0.15;
+    var domeSx = Math.max(0.04, halfW * 0.55), domeSy = Math.max(0.03, (chestY - hy) * 0.3), domeA = Math.max(0.04, (chestY - hy) * 0.4);
+    function torsoDisp(c, x, y, z, wr) {
+      var mask = 0;
+      c.set.forEach(function (n) { mask += wr[n] || 0; });
+      if (mask < 0.02) return null;
+      if (c.id === 'bellyRound') {
+        var yc = hy + (chestY - hy) * 0.38, vx = x - axis.x, vy = y - yc, vz = z - axis.z;
+        var g = Math.exp(-(vx * vx) / (2 * domeSx * domeSx) - (vy * vy) / (2 * domeSy * domeSy));
+        var sf = Math.max(0, Math.min(1, (vz * fz + 0.03) / 0.08)); sf = sf * sf * (3 - 2 * sf);
+        var kk = Math.min(mask, 1) * g * sf * domeA;
+        if (kk < 1e-5) return null;
+        var ln = Math.hypot(vx * 0.6, vy * 0.6, vz) || 1;
+        return [vx * 0.6 / ln * kk, vy * 0.6 / ln * kk, vz / ln * kk];
+      }
+      var pr = profile(c.id, y);
+      if (pr <= 0) return null;
+      var k = Math.min(mask, 1) * pr, dx = x - axis.x, dz = z - axis.z;
+      var s = Math.max(0, Math.min(1, (dz * fz + 0.03) / 0.08)); s = s * s * (3 - 2 * s);
+      var side = c.back + (c.front - c.back) * s;
+      return [dx * k * c.w.x, 0, dz * k * c.w.z * side];
+    }
+    function limbDisp(c, x, y, z, wr) {
+      var out = null;
+      SIDES.forEach(function (sd) {
+        var an = sd + c.bone, A = P[an], B = P[sd + LIMB_CHILD[c.bone]], mask = wr[an] || 0;
+        if (!A || !B || mask < 0.02) return;
+        var ax = B.x - A.x, ay = B.y - A.y, az = B.z - A.z, L2 = ax * ax + ay * ay + az * az;
+        if (L2 < 1e-9) return;
+        var t = ((x - A.x) * ax + (y - A.y) * ay + (z - A.z) * az) / L2;
+        if (t <= 0 || t >= 1) return;
+        var k = Math.min(mask, 1) * Math.sqrt(Math.sin(Math.PI * t));
+        var rx = x - (A.x + t * ax), ry = y - (A.y + t * ay), rz = z - (A.z + t * az);
+        out = out || [0, 0, 0]; out[0] += rx * k; out[1] += ry * k; out[2] += rz * k;
+      });
+      return out;
+    }
+    var entries = [], seen = {};
+    json.nodes.forEach(function (nd) {
+      if (nd.mesh === undefined || nd.skin === undefined) return;
+      var joints = json.skins[nd.skin].joints;
+      json.meshes[nd.mesh].primitives.forEach(function (pr) {
+        var at = pr.attributes;
+        if (at.POSITION === undefined || at.JOINTS_0 === undefined || at.WEIGHTS_0 === undefined || seen[at.POSITION]) return;
+        var pa = acc(at.POSITION), ja = acc(at.JOINTS_0), wa = acc(at.WEIGHTS_0);
+        if (!pa || !ja || !wa || pa.ct !== 5126 || pa.n !== 3) return;
+        seen[at.POSITION] = 1;
+        var wdiv = wa.ct === 5121 ? 255 : wa.ct === 5123 ? 65535 : 1;
+        var pos0 = new Float32Array(pa.count * 3), tmp = {};
+        surf.forEach(function (c) { tmp[c.id] = { idx: [], d: [] }; });
+        for (var i = 0; i < pa.count; i++) {
+          var x = rd(pa, i, 0), y = rd(pa, i, 1), z = rd(pa, i, 2);
+          pos0[i * 3] = x; pos0[i * 3 + 1] = y; pos0[i * 3 + 2] = z;
+          var wr = {}, any = false;
+          for (var k = 0; k < 4; k++) {
+            var w = rd(wa, i, k) / wdiv;
+            if (w <= 0) continue;
+            var nm = boneOf[joints[rd(ja, i, k)]];
+            if (nm) { wr[nm] = (wr[nm] || 0) + w; any = true; }
+          }
+          if (!any) continue;
+          for (var s = 0; s < surf.length; s++) {
+            var c = surf[s], d = c.kind === 'torso' ? torsoDisp(c, x, y, z, wr) : limbDisp(c, x, y, z, wr);
+            if (d) { tmp[c.id].idx.push(i); tmp[c.id].d.push(d[0], d[1], d[2]); }
+          }
+        }
+        var lists = {};
+        surf.forEach(function (c) { if (tmp[c.id].idx.length) lists[c.id] = { idx: Int32Array.from(tmp[c.id].idx), d: Float32Array.from(tmp[c.id].d) }; });
+        entries.push({ pa: pa, count: pa.count, pos0: pos0, lists: lists, geoms: [] });
+      });
+    });
+    return { entries: entries, binIndex: chunks.findIndex(function (c) { return c.type === BIN_TYPE; }) };
+  }
+  function entryPositions(e, f) {
+    var out = new Float32Array(e.pos0);
+    for (var id in e.lists) {
+      var delta = (f[id] === undefined ? 1 : f[id]) - 1;
+      if (Math.abs(delta) < 1e-6) continue;
+      var L = e.lists[id];
+      for (var k = 0; k < L.idx.length; k++) {
+        var o = L.idx[k] * 3;
+        out[o] += L.d[k * 3] * delta; out[o + 1] += L.d[k * 3 + 1] * delta; out[o + 2] += L.d[k * 3 + 2] * delta;
+      }
+    }
+    return out;
+  }
+  function mapGeometries(mdl) {
+    mdl.root.traverse(function (o) {
+      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+      var g = o.geometry, at = g.attributes.position, arr = at.array;
+      o.frustumCulled = false;
+      mdl.def.entries.forEach(function (e) {
+        var p = e.pos0, n = p.length;
+        if (e.count !== at.count) return;
+        if (Math.abs(p[0] - arr[0]) < 1e-5 && Math.abs(p[1] - arr[1]) < 1e-5 && Math.abs(p[2] - arr[2]) < 1e-5 && Math.abs(p[n - 1] - arr[n - 1]) < 1e-5) {
+          if (e.geoms.indexOf(g) < 0) e.geoms.push(g);
+        }
+      });
+    });
+  }
+  function applySurface(mdl, f) {
+    mdl.def.entries.forEach(function (e) {
+      if (!e.geoms.length) return;
+      var pos = entryPositions(e, f);
+      e.geoms.forEach(function (g) {
+        var at = g.attributes.position;
+        if (at.array.length !== pos.length) return;
+        at.array.set(pos); at.needsUpdate = true;
+      });
+    });
+  }
+  function exportParts(mdl, f, edits) {
+    var json = editedJSON(mdl.m, edits), chunks = mdl.chunks.map(function (c) { return { type: c.type, data: c.data }; });
+    var def = mdl.def;
+    if (def && def.binIndex >= 0) {
+      var bin = new Uint8Array(chunks[def.binIndex].data), dv = new DataView(bin.buffer);
+      var changed = false;
+      def.entries.forEach(function (e) {
+        var any = false;
+        for (var id in e.lists) if (Math.abs((f[id] === undefined ? 1 : f[id]) - 1) > 1e-6) any = true;
+        if (!any) return;
+        var pos = entryPositions(e, f), A = e.pa, mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+        for (var i = 0; i < e.count; i++) {
+          for (var k = 0; k < 3; k++) {
+            var v = pos[i * 3 + k];
+            dv.setFloat32(A.base + i * A.stride + k * 4, v, true);
+            if (v < mn[k]) mn[k] = v; if (v > mx[k]) mx[k] = v;
+          }
+        }
+        json.accessors[A.ai].min = mn; json.accessors[A.ai].max = mx;
+        changed = true;
+      });
+      if (changed) chunks[def.binIndex] = { type: BIN_TYPE, data: bin };
+    }
+    return { json: json, chunks: chunks };
+  }
+
+  /* ---------- Scene ---------- */
+  var stage = document.getElementById('stage');
+  var renderer = null, scene, camera, controls, grid, modelRoot, glOK = true;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    stage.insertBefore(renderer.domElement, stage.firstChild);
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(30, 1, 0.05, 60);
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.minDistance = 0.6; controls.maxDistance = 9; controls.maxPolarAngle = Math.PI * 0.52;
+    controls.addEventListener('change', render);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a92b8, 0.95));
+    var sun = new THREE.DirectionalLight(0xffffff, 1.1); sun.position.set(2, 4, 3); scene.add(sun);
+    var rim = new THREE.DirectionalLight(0xbfc8ff, 0.5); rim.position.set(-3, 2, -3); scene.add(rim);
+    grid = new THREE.GridHelper(6, 60, 0x8f98c2, 0xc4c9e2);
+    grid.material.transparent = true; grid.material.opacity = 0.8;
+    scene.add(grid);
+    modelRoot = new THREE.Group(); scene.add(modelRoot);
+  } catch (err) {
+    glOK = false; renderer = null;
+    var msg = document.createElement('div'); msg.className = 'nogl';
+    msg.textContent = '3D preview needs WebGL, which this browser has turned off. The sliders and export still work.';
+    stage.appendChild(msg);
+  }
+  var queued = false;
+  function render() {
+    if (!renderer || queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; renderer.render(scene, camera); });
+  }
+  function cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function themeScene() {
+    if (!grid) return;
+    var c1 = new THREE.Color(cssVar('--grid1')), c2 = new THREE.Color(cssVar('--grid2'));
+    var a = grid.material.color; // GridHelper keeps two vertex colors; rebuild them
+    var col = grid.geometry.attributes.color, half = 30, k = 0, i;
+    for (i = 0; i <= 60; i++) {
+      var c = i === half ? c1 : c2;
+      for (var r = 0; r < 4; r++) { col.setXYZ(k++, c.r, c.g, c.b); }
+    }
+    col.needsUpdate = true; render();
+  }
+  function resize() {
+    if (!renderer) return;
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix(); render();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+  window.addEventListener('resize', resize);
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { setTimeout(themeScene, 30); });
+  new MutationObserver(function () { setTimeout(themeScene, 30); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  function disposeTree(o) {
+    o.traverse(function (x) {
+      if (x.geometry) x.geometry.dispose();
+      if (x.material) (Array.isArray(x.material) ? x.material : [x.material]).forEach(function (mt) {
+        for (var k in mt) if (mt[k] && mt[k].isTexture) mt[k].dispose();
+        mt.dispose();
+      });
+    });
+  }
+  function frame(h) {
+    if (!renderer) return;
+    var d = (h * 0.68) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    controls.target.set(0, h * 0.5, 0);
+    camera.position.set(0, h * 0.55, d);
+    controls.update(); render();
+  }
+
+  /* ---------- Demo mannequin (same skeleton pipeline as a real VRM) ---------- */
+  function makeMannequin() {
+    var defs = [
+      ['Root', -1, [0, 0, 0]], ['hips', 0, [0, 0.92, 0]], ['spine', 1, [0, 0.10, 0]], ['chest', 2, [0, 0.16, 0]],
+      ['neck', 3, [0, 0.20, 0]], ['head', 4, [0, 0.07, 0]],
+      ['leftUpperArm', 3, [0.16, 0.17, 0]], ['leftLowerArm', 6, [0.28, 0, 0]], ['leftHand', 7, [0.25, 0, 0]],
+      ['rightUpperArm', 3, [-0.16, 0.17, 0]], ['rightLowerArm', 9, [-0.28, 0, 0]], ['rightHand', 10, [-0.25, 0, 0]],
+      ['leftUpperLeg', 1, [0.09, -0.05, 0]], ['leftLowerLeg', 12, [0, -0.42, 0]], ['leftFoot', 13, [0, -0.38, 0]],
+      ['rightUpperLeg', 1, [-0.09, -0.05, 0]], ['rightLowerLeg', 15, [0, -0.42, 0]], ['rightFoot', 16, [0, -0.38, 0]]
+    ];
+    var json = { nodes: [], extensions: { VRMC_vrm: { humanoid: { humanBones: {} } } } };
+    defs.forEach(function (d, i) {
+      json.nodes.push({ name: d[0], translation: d[2], children: [] });
+      if (d[1] >= 0) json.nodes[d[1]].children.push(i);
+      if (i > 0) json.extensions.VRMC_vrm.humanoid.humanBones[d[0]] = { node: i };
+    });
+    var m = prepare(json); m.boneThick = true;
+    var objs = json.nodes.map(function (nd) { var o = new THREE.Object3D(); o.position.fromArray(nd.translation); return o; });
+    json.nodes.forEach(function (nd, i) { if (m.parent[i] >= 0) objs[m.parent[i]].add(objs[i]); });
+    var mat = new THREE.MeshStandardMaterial({ color: 0x9aa4da, roughness: 0.55, metalness: 0.05 });
+    var Y = new V3(0, 1, 0);
+    function limb(i, to, r) {
+      var dir = new V3().setFromMatrixPosition(m.L0[to]), len = dir.length();
+      dir.normalize();
+      var mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 14), mat);
+      mesh.quaternion.setFromUnitVectors(Y, dir); mesh.position.copy(dir).multiplyScalar(len / 2);
+      objs[i].add(mesh);
+    }
+    function blob(i, geo, pos, sc) { var mesh = new THREE.Mesh(geo, mat); mesh.position.set(pos[0], pos[1], pos[2]); if (sc) mesh.scale.set(sc[0], sc[1], sc[2]); objs[i].add(mesh); }
+    blob(1, new THREE.SphereGeometry(0.12, 24, 16), [0, -0.01, 0], [1.2, 0.8, 0.85]);
+    limb(2, 3, 0.1); limb(3, 4, 0.105); limb(4, 5, 0.04);
+    blob(5, new THREE.SphereGeometry(0.095, 24, 16), [0, 0.095, 0]);
+    var nose = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 12), new THREE.MeshStandardMaterial({ color: 0xf2be1a, roughness: 0.5 }));
+    nose.rotation.x = Math.PI / 2; nose.position.set(0, 0.09, 0.1); objs[5].add(nose);
+    [[6, 7, 8], [9, 10, 11]].forEach(function (a) {
+      limb(a[0], a[1], 0.042); limb(a[1], a[2], 0.036);
+      blob(a[2], new THREE.SphereGeometry(0.046, 16, 12), [a[0] === 6 ? 0.05 : -0.05, 0, 0]);
+    });
+    [[12, 13, 14], [15, 16, 17]].forEach(function (a) {
+      limb(a[0], a[1], 0.08); limb(a[1], a[2], 0.057);
+      blob(a[2], new THREE.BoxGeometry(0.09, 0.06, 0.22), [0, -0.04, 0.05]);
+    });
+    var root = new THREE.Group(); root.add(objs[0]);
+    return { m: m, root: root, objs: objs, name: 'Demo mannequin', chunks: null, demo: true };
+  }
+
+  /* ---------- State and UI ---------- */
+  var model = null, values = {}, lastEdits = [];
+  var controlsEl = document.getElementById('controls'), rows = {};
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+  function setStatus(t) { document.getElementById('status').textContent = t; }
+
+  function buildControls() {
+    var groups = {}, order = [];
+    CONTROLS.forEach(function (c) {
+      if (!groups[c.group]) { groups[c.group] = el('section', 'grp'); groups[c.group].appendChild(el('h2', null, c.group)); order.push(c.group); }
+      var row = el('div', 'row'), head = el('div', 'rowhead');
+      var lab = el('label', null, c.label); lab.htmlFor = 'c-' + c.id;
+      var out = el('output', null, '100%'); out.id = 'o-' + c.id; out.htmlFor = 'c-' + c.id;
+      head.appendChild(lab); head.appendChild(out);
+      var tape = el('div', 'tape'), inp = document.createElement('input');
+      inp.type = 'range'; inp.id = 'c-' + c.id; inp.min = c.min; inp.max = c.max; inp.step = 1; inp.value = 100;
+      tape.appendChild(inp); row.appendChild(head); row.appendChild(tape); groups[c.group].appendChild(row);
+      tape.style.setProperty('--c', ((100 - c.min) / (c.max - c.min) * 100).toFixed(3));
+      rows[c.id] = { row: row, inp: inp, out: out, tape: tape, c: c };
+      values[c.id] = 100;
+      inp.addEventListener('input', function () { values[c.id] = +inp.value; refreshRow(c.id); update(); });
+      head.addEventListener('dblclick', function () { values[c.id] = 100; inp.value = 100; refreshRow(c.id); update(); });
+    });
+    order.forEach(function (g) { controlsEl.appendChild(groups[g]); });
+  }
+  function refreshRow(id) {
+    var r = rows[id], c = r.c, v = values[id];
+    var pos = (v - c.min) / (c.max - c.min) * 100, mid = (100 - c.min) / (c.max - c.min) * 100;
+    r.tape.style.setProperty('--a', Math.min(pos, mid).toFixed(3) + '%');
+    r.tape.style.setProperty('--b', Math.max(pos, mid).toFixed(3) + '%');
+    var txt = v + '%';
+    if (id === 'height' && model && model.baseHeight) txt += '  ·  ' + (model.baseHeight * v / 100).toFixed(2) + ' m';
+    r.out.textContent = txt;
+    r.out.classList.toggle('changed', v !== 100);
+  }
+  function refreshAvailability() {
+    CONTROLS.forEach(function (c) {
+      var ok = c.kind === 'height' || boneNames(c).some(function (n) { return model.m.hum[n] !== undefined; });
+      rows[c.id].row.classList.toggle('na', !ok); rows[c.id].inp.disabled = !ok;
+      rows[c.id].row.title = ok ? '' : 'This model has no matching bone.';
+    });
+  }
+  function factors() { var f = {}; CONTROLS.forEach(function (c) { f[c.id] = values[c.id] / 100; }); return f; }
+  function update() {
+    if (!model) return;
+    var fac = factors();
+    lastEdits = computeEdits(model.m, fac);
+    if (model.def) applySurface(model, fac);
+    lastEdits.forEach(function (e) {
+      var o = model.objs[e.i];
+      if (o) { o.position.copy(e.p); o.quaternion.copy(e.q); o.scale.copy(e.s); }
+    });
+    refreshRow('height');
+    render();
+  }
+  function resetAll() {
+    CONTROLS.forEach(function (c) { values[c.id] = 100; rows[c.id].inp.value = 100; refreshRow(c.id); });
+    update();
+  }
+
+  function installModel(mdl, h) {
+    if (model && renderer) { modelRoot.remove(model.root); disposeTree(model.root); }
+    model = mdl;
+    if (renderer) modelRoot.add(mdl.root);
+    model.baseHeight = h;
+    refreshAvailability();
+    resetAll();
+    if (renderer) { modelRoot.updateMatrixWorld(true); frame(h); }
+    document.getElementById('export').disabled = !!mdl.demo;
+    document.getElementById('export').title = mdl.demo ? 'Open a .vrm file first' : '';
+    document.getElementById('hint').hidden = !mdl.demo;
+  }
+  function measureHeight(root) {
+    root.updateMatrixWorld(true);
+    var b = new THREE.Box3().setFromObject(root), h = b.max.y - Math.max(0, b.min.y);
+    return h > 0.3 && h < 6 ? h : 1.6;
+  }
+  function showMannequin() {
+    var mq = makeMannequin();
+    installModel(mq, 1.6);
+  }
+
+  async function loadFile(file) {
+    try {
+      setStatus('Reading ' + file.name + '…');
+      var buf = await file.arrayBuffer();
+      var parsed = parseGLB(buf), json = parsed.json;
+      var m = prepare(json);
+      if (m.hum.hips === undefined) throw new Error('No VRM skeleton found. Open a .vrm file made for VRM 0.x or 1.0.');
+      var root, objs;
+      if (renderer) {
+        var gltf = await new Promise(function (res, rej) { new THREE.GLTFLoader().parse(buf.slice(0), '', res, rej); });
+        objs = await Promise.all(json.nodes.map(function (_, i) { return gltf.parser.getDependency('node', i); }));
+        root = new THREE.Group(); root.add(gltf.scene);
+        if (json.extensions && json.extensions.VRM) root.rotation.y = Math.PI;
+      } else { root = new THREE.Group(); objs = []; }
+      var v1 = !!(json.extensions && json.extensions.VRMC_vrm);
+      var mdl = { m: m, root: root, objs: objs, name: file.name, chunks: parsed.chunks, demo: false };
+      mdl.def = buildDeformers(m, parsed.chunks);
+      if (mdl.def && renderer) mapGeometries(mdl);
+      installModel(mdl, renderer ? measureHeight(root) : 1.6);
+      var lic = document.getElementById('license'), meta = v1 && json.extensions.VRMC_vrm.meta;
+      if (meta && meta.modification === 'prohibited') { lic.textContent = 'This model\'s license says modification is prohibited. Check the license before sharing an edited copy.'; lic.hidden = false; }
+      else lic.hidden = true;
+      setStatus(file.name + '  ·  VRM ' + (v1 ? '1.0' : '0.x') + '  ·  ' + (file.size / 1048576).toFixed(1) + ' MB');
+    } catch (err) {
+      setStatus('Could not open that file. ' + (err && err.message ? err.message : ''));
+    }
+  }
+
+  /* ---------- Export ---------- */
+  var downloadsNS = null;
+  async function getDownloads() {
+    try { return window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { return null; }
+  }
+  async function doExport() {
+    if (!model || model.demo) return;
+    var btn = document.getElementById('export'); btn.disabled = true;
+    try {
+      var parts = exportParts(model, factors(), lastEdits), glb = buildGLB(parts.json, parts.chunks);
+      var base = model.name.replace(/\.(vrm|glb)$/i, '') + '_fitted';
+      if (downloadsNS) {
+        try {
+          await downloadsNS.save({ filename: base + '.zip', data: new Blob([zipStore(base + '.vrm', glb)]) });
+          setStatus('Saved ' + base + '.zip. Unzip it to get ' + base + '.vrm.');
+        } catch (e) {
+          setStatus(e && e.code === 'declined' ? 'Export cancelled.' : 'The viewer could not save the file here (' + ((e && e.code) || 'error') + ').');
+        }
+      } else {
+        var url = URL.createObjectURL(new Blob([glb], { type: 'application/octet-stream' }));
+        var a = document.createElement('a'); a.href = url; a.download = base + '.vrm';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        setStatus('Exported ' + base + '.vrm (' + (glb.length / 1048576).toFixed(1) + ' MB).');
+      }
+    } catch (err) { setStatus('Export failed. ' + (err && err.message ? err.message : '')); }
+    btn.disabled = false;
+  }
+
+  /* ---------- Wiring ---------- */
+  buildControls();
+  showMannequin();
+  themeScene(); resize();
+  var fileInput = document.getElementById('file');
+  document.getElementById('open').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () { if (fileInput.files[0]) loadFile(fileInput.files[0]); fileInput.value = ''; });
+  document.getElementById('reset').addEventListener('click', resetAll);
+  document.getElementById('export').addEventListener('click', doExport);
+  ['dragenter', 'dragover'].forEach(function (t) { stage.addEventListener(t, function (e) { e.preventDefault(); stage.classList.add('drag'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { stage.addEventListener(t, function (e) { e.preventDefault(); stage.classList.remove('drag'); }); });
+  stage.addEventListener('drop', function (e) { var f = e.dataTransfer && e.dataTransfer.files[0]; if (f) loadFile(f); });
+  getDownloads().then(function (d) {
+    downloadsNS = d;
+    document.getElementById('exporthint').textContent = d
+      ? 'This view cannot save .vrm files directly, so Export saves a .zip with your .vrm inside. Unzip it, then use the .vrm.'
+      : 'Export downloads an edited copy and never changes your original file.';
+  });
+  document.getElementById('exporthint').textContent = 'Export downloads an edited copy and never changes your original file.';
+})();
+</script>
+</body></html>
